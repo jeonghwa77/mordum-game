@@ -5,7 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
-const VERSION = '1.8';
+const VERSION = '1.9';
 const SLOTS = ['1-1', '1-2', '1-3', '1-4', '2-1', '2-2', '2-3', '2-4'];
 const C = {
   R: 500,            // 반원 맵 반지름
@@ -225,9 +225,16 @@ function handle(room, p, m) {
       break;
     }
     case 'atk': {
-      if (room.phase !== 'hammer' || !p.alive || !p.inGame) return;
+      // 망치 장판부터 폭발 직전까지 계속 공격 가능 (보스 체력 0 이후엔 딜 경쟁용)
+      if (!['hammer', 'pads', 'conv', 'wait'].includes(room.phase) || !p.alive || !p.inGame) return;
       if (now - p.lastAtk < C.ATK_CD) return;
-      p.lastAtk = now; g.bossHp = Math.max(0, g.bossHp - 1); p.dmg++;
+      p.lastAtk = now; p.hits++;
+      const crit = Math.random() < 0.25;
+      const val = Math.round((80 + Math.random() * 40) * (crit ? 2 : 1)); // 단위: 억
+      p.dmg += val;
+      p.conn.send({ t: 'hit', v: val, crit });
+      if (room.phase !== 'hammer') break;
+      g.bossHp = Math.max(0, g.bossHp - 1);
       if (g.bossHp <= 0) {
         room.phase = 'pads'; g.bossDeadAt = now;
         // 자리 뺏기 강제: 변환 대상자를 미리 정하고, 그 사람 자리를 현재 전하와 같은 색으로 (반전되면 다른 장판으로 가야 함)
@@ -273,7 +280,7 @@ function startGame(room) {
   const ps = shuffle([...room.players.values()]);
   const n = ps.length, k = Math.floor(Math.random() * (n + 1)); // + 전하 인원 (0~n 랜덤)
   ps.forEach((p, i) => {
-    p.charge = i < k ? 1 : -1; p.alive = true; p.inGame = true; p.reason = null; p.dmg = 0; p.lastAtk = 0;
+    p.charge = i < k ? 1 : -1; p.alive = true; p.inGame = true; p.reason = null; p.dmg = 0; p.hits = 0; p.lastAtk = 0;
     const a = 0.25 + Math.random() * (Math.PI - 0.5), r = 150 + Math.random() * 160;
     const q = clampPos(Math.cos(a) * r, Math.sin(a) * r); p.x = q.x; p.y = q.y;
   });
@@ -287,7 +294,7 @@ function startGame(room) {
 function endGame(room) {
   room.phase = 'result';
   const list = [...room.players.values()].filter(p => p.inGame).sort((a, b) => a.slot - b.slot)
-    .map(p => ({ id: p.id, nick: p.nick, slot: p.slot, alive: p.alive, reason: p.reason, charge: p.charge, dmg: p.dmg }));
+    .map(p => ({ id: p.id, nick: p.nick, slot: p.slot, alive: p.alive, reason: p.reason, charge: p.charge, dmg: p.dmg, hits: p.hits }));
   sendSnap(room, Date.now());
   bcast(room, { t: 'result', list });
   broadcastRoom(room);
@@ -356,7 +363,7 @@ function sendSnap(room, now) {
   bcast(room, {
     t: 's', now, ph: room.phase,
     g: { zl: g.zoneLeft, ha: g.hammerAt, ge: g.graceEnd, ea: g.enrageAt, hp: g.bossHp, hm: g.bossMax, pads: g.pads, act: g.act, ca: g.convAt, fa: g.flipAt, ba: g.boomAt, ct: g.convTarget, cp: g.convPos, split: g.split },
-    ps: [...room.players.values()].map(p => [p.id, Math.round(p.x), Math.round(p.y), p.charge, p.alive ? 1 : 0, p.inGame ? 1 : 0]),
+    ps: [...room.players.values()].map(p => [p.id, Math.round(p.x), Math.round(p.y), p.charge, p.alive ? 1 : 0, p.inGame ? 1 : 0, p.dmg]),
   });
 }
 

@@ -93,6 +93,23 @@ kbd{background:#1c2440;border:1px solid var(--line);border-bottom-width:2px;bord
 #mehud .v{font-size:20px;font-weight:800}
 .chg{display:inline-flex;width:30px;height:30px;border-radius:50%;align-items:center;justify-content:center;font-weight:900;font-size:20px;color:#fff;border:2px solid #fff6}
 .chg.p{background:var(--blue)}.chg.m{background:var(--red)}
+#meter{position:absolute;left:14px;top:52px;width:230px;background:#0b1020d9;border:1px solid var(--line);border-radius:10px;padding:8px 10px;pointer-events:none;font-size:12px}
+#meter .mt{display:flex;justify-content:space-between;color:var(--dim);font-weight:700;margin-bottom:5px}
+#meter .mr{position:relative;display:flex;justify-content:space-between;gap:6px;padding:3px 6px;border-radius:5px;margin-top:3px;overflow:hidden}
+#meter .mr .bar{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,#c24a2a88,#c24a2a33);z-index:0}
+#meter .mr.me .bar{background:linear-gradient(90deg,#3fae5f99,#3fae5f33)}
+#meter .mr span{position:relative;z-index:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#meter .mr .rk{color:var(--gold);font-weight:800;width:16px;flex-shrink:0}
+#meter .mr .nm{flex:1}
+#meter .mr.dead .nm{color:#7d8399;text-decoration:line-through}
+#meter .mr .dv{font-weight:700;font-variant-numeric:tabular-nums}
+.mvp{display:flex;align-items:center;gap:12px;margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:linear-gradient(90deg,#4a3500,#2a1e00);border:1px solid #c99a1a}
+.mvp .crown{font-size:13px;font-weight:900;color:#1b1300;background:var(--gold);border-radius:6px;padding:3px 7px;flex-shrink:0}
+.mvp .who{font-size:18px;font-weight:800;flex:1}
+.mvp .amt{font-size:15px;font-weight:800;color:var(--gold);font-variant-numeric:tabular-nums}
+.rrow .rk{width:30px;font-weight:800;color:var(--dim)}
+.rrow.top .rk{color:var(--gold)}
+.rrow .dm{font-weight:800;color:#ffcf6a;font-variant-numeric:tabular-nums}
 #feed{position:absolute;right:14px;top:58px;width:min(300px,45vw);display:flex;flex-direction:column;gap:4px;pointer-events:none}
 #feed div{background:#0b1020cc;border-left:3px solid var(--red);padding:5px 8px;font-size:12px;border-radius:4px}
 #feed div.info{border-left-color:var(--violet)}
@@ -129,6 +146,7 @@ kbd{background:#1c2440;border:1px solid var(--line);border-bottom-width:2px;bord
   #feed{top:auto;bottom:112px;left:14px;right:14px;width:auto}
   #feed div{font-size:11px;padding:4px 7px}
   #feed div:nth-last-child(n+4){display:none}
+  #meter{display:none}
 }
 @media (hover:hover) and (pointer:fine){ #pingBtn{display:none} }
 </style>
@@ -176,7 +194,7 @@ kbd{background:#1c2440;border:1px solid var(--line);border-bottom-width:2px;bord
       <b>패턴 순서</b> <span style="color:var(--dim);font-size:12px">(시간은 위 초수 설정)</span>
       <ol>
         <li>시작 후 맵이 <b style="color:#ff6b78">빨강</b> / <b style="color:#6aa8ff">파랑</b>으로 반 갈라짐(망치 장판). 정해진 시간 안에 내 전하 색 구역으로.</li>
-        <li>내 구역에서 보스 공격(클릭). 구역을 넘으면 즉사.</li>
+        <li>내 구역에서 보스 공격(클릭). 구역을 넘으면 즉사. 보스 체력이 0이 된 뒤에도 폭발 전까지 계속 때려서 <b>딜 1등</b>을 노려보세요.</li>
         <li>보스 체력 0 → 8개 반구 장판 등장. <b>잠시 망치 장판 유지</b> — 아직 넘어가지 마세요.</li>
         <li>랜덤 1명에게 변환 장판(대상자를 따라다님). 사라질 때 위에 있던 사람 전하 반전.</li>
         <li>그 뒤 전지역 폭발: 장판 밖, 다른 색 장판, 한 장판에 2명 이상이면 사망.</li>
@@ -195,6 +213,7 @@ kbd{background:#1c2440;border:1px solid var(--line);border-bottom-width:2px;bord
   </div>
   <div id="banner"><div class="big" id="bnBig"></div><div class="small" id="bnSmall"></div></div>
   <div id="topbtns"><button class="btn" id="exitBtn">나가기</button><button class="btn" id="muteBtn">소리 켜짐</button></div>
+  <div id="meter" class="hidden"></div>
   <div id="feed"></div>
   <div id="mehud">
     <div><div class="k">내 자리</div><div class="v" id="mySlot">-</div></div>
@@ -222,7 +241,7 @@ const store = {
 };
 
 // ---------- 상태 ----------
-const CLIENT_VERSION = '1.8';
+const CLIENT_VERSION = '1.9';
 const OPT_FALLBACK = [
   { k: 'intro', label: '시작 → 망치 장판', def: 2, min: 0.5, max: 10, step: 0.5 },
   { k: 'grace', label: '망치 장판 → 구역 판정', def: 4, min: 0.5, max: 10, step: 0.5 },
@@ -328,6 +347,12 @@ function onMsg(m){
       break;
     }
     case 'fx': onFx(m); break;
+    case 'hit': {
+      const n = m.v * 1e8 + Math.floor(Math.random() * 1e8);
+      floats.push({ x: (Math.random() - .5) * 140, y: -30 - Math.random() * 30, t: performance.now(), text: n.toLocaleString('en-US'), crit: m.crit });
+      if (m.crit) tone(660, .08, 'square', .05, 330);
+      break;
+    }
     case 'ping':
       pings.push({ x: m.x, y: m.y, nick: m.nick, mine: m.id === you, t: performance.now() });
       sfx.ping(); break;
@@ -463,7 +488,10 @@ function showResult(list){
   const alive = list.filter(p => p.alive).length;
   $('#rTitle').innerHTML = alive === list.length ? '<span class="ok">클리어!</span>' : alive ? `생존 ${alive} / ${list.length}` : '<span class="no">전멸</span>';
   $('#rSub').textContent = alive === list.length ? '전원 생존했어요.' : '살아남은 사람이 승리입니다.';
-  $('#rList').innerHTML = list.map(p => `<div class="rrow ${p.alive ? '' : 'dead'}"><span class="s">${SLOTS[p.slot] || ''}</span><span class="chg ${p.charge > 0 ? 'p' : 'm'}" style="width:24px;height:24px;font-size:15px">${p.charge > 0 ? '+' : '−'}</span><span class="n">${esc(p.nick)}${p.id === you ? ' (나)' : ''}</span><span class="st">${p.alive ? '<span class="ok">생존 · 승리</span>' : '<span class="no">' + esc(p.reason || '사망') + '</span>'}<br><span style="color:var(--dim)">공격 ${p.dmg}회</span></span></div>`).join('');
+  const ranked = [...list].sort((a, b) => b.dmg - a.dmg);
+  const top = ranked[0];
+  const mvp = top && top.dmg > 0 ? `<div class="mvp"><span class="crown">딜 1등</span><span class="who">${esc(top.nick)}${top.id === you ? ' (나)' : ''}</span><span class="amt">${fmtDmg(top.dmg)}</span></div>` : '';
+  $('#rList').innerHTML = mvp + ranked.map((p, i) => `<div class="rrow ${p.alive ? '' : 'dead'} ${i === 0 && p.dmg > 0 ? 'top' : ''}"><span class="rk">${i + 1}위</span><span class="chg ${p.charge > 0 ? 'p' : 'm'}" style="width:24px;height:24px;font-size:15px">${p.charge > 0 ? '+' : '−'}</span><span class="n">${esc(p.nick)}${p.id === you ? ' (나)' : ''}<br><span style="color:var(--dim);font-size:11px;font-weight:500">${SLOTS[p.slot] || ''} · ${p.hits || 0}타</span></span><span class="st"><span class="dm">${fmtDmg(p.dmg)}</span><br>${p.alive ? '<span class="ok">생존 · 승리</span>' : '<span class="no">' + esc(p.reason || '사망') + '</span>'}</span></div>`).join('');
   const b = $('#rBtns');
   b.innerHTML = '';
   if (isHost()) {
@@ -515,11 +543,11 @@ function doPing(){
   const t = performance.now(); if (t - lastPingAt < 250) return; lastPingAt = t;
   send({ t: 'ping', x: mouse.wx, y: mouse.wy });
 }
+const ATK_PH = ['hammer', 'pads', 'conv', 'wait'];
+function fmtDmg(v){ return v >= 10000 ? (v / 10000).toFixed(2) + '조' : Math.round(v).toLocaleString('ko-KR') + '억'; }
 function attack(){
-  if (!snap || snap.ph !== 'hammer' || !canAct()) return;
+  if (!snap || !ATK_PH.includes(snap.ph) || !canAct()) return;
   send({ t: 'atk' });
-  const n = 1.2e9 + Math.random() * 7e8;
-  floats.push({ x: (Math.random() - .5) * 120, y: -30 - Math.random() * 30, t: performance.now(), text: Math.floor(n).toLocaleString('en-US'), crit: Math.random() < .25 });
   slashes.push({ x: me.x, y: me.y, t: performance.now() });
   sfx.hit();
 }
@@ -781,6 +809,21 @@ function draw(t){
   hud(t);
 }
 
+// ---------- 딜 미터 ----------
+let meterKey = '';
+function renderMeter(){
+  const el = $('#meter');
+  if (!snap || !room) { el.classList.add('hidden'); return; }
+  const rows = snap.ps.filter(p => p[5]).map(p => ({ id: p[0], alive: p[4], dmg: p[6] || 0 })).sort((a, b) => b.dmg - a.dmg);
+  if (!rows.length) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  const key = rows.map(r => r.id + r.dmg + r.alive).join('|');
+  if (key === meterKey) return; meterKey = key;
+  const max = Math.max(1, rows[0].dmg), total = rows.reduce((t, r) => t + r.dmg, 0);
+  el.innerHTML = `<div class="mt"><span>딜 미터</span><span>${fmtDmg(total)}</span></div>` + rows.map((r, i) =>
+    `<div class="mr ${r.id === you ? 'me' : ''} ${r.alive ? '' : 'dead'}"><span class="bar" style="width:${r.dmg / max * 100}%"></span><span class="rk">${i + 1}</span><span class="nm">${esc(nickOf(r.id))}</span><span class="dv">${fmtDmg(r.dmg)}</span></div>`).join('');
+}
+
 // ---------- HUD ----------
 let lastTickSec = -1;
 function hud(t){
@@ -819,7 +862,8 @@ function hud(t){
   let target = null;
   if (ph === 'intro') target = g.ha; else if (ph === 'hammer' && now < g.ge) target = g.ge; else if (ph === 'wait') target = g.ba;
   if (target) { const s = Math.ceil((target - now) / 1000); if (s !== lastTickSec && s > 0 && s <= 3) { lastTickSec = s; sfx.tick(); } } else lastTickSec = -1;
-  $('#atkBtn').disabled = !(ph === 'hammer' && canAct());
+  $('#atkBtn').disabled = !(ATK_PH.includes(ph) && canAct());
+  renderMeter();
   const cdLeft = tpReadyAt - performance.now();
   $('#tpCd').classList.toggle('hidden', cdLeft <= 0);
   if (cdLeft > 0) $('#tpCd').textContent = (cdLeft / 1000).toFixed(1);
