@@ -5,7 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
-const VERSION = '1.9';
+const VERSION = '2.0';
 const SLOTS = ['1-1', '1-2', '1-3', '1-4', '2-1', '2-2', '2-3', '2-4'];
 const C = {
   R: 500,            // 반원 맵 반지름
@@ -17,20 +17,32 @@ const C = {
   SPEED: 320,        // 이동 속도 (units/s)
   // 단계별 초수는 아래 OPT_SPEC 기본값 (방장이 대기실에서 변경)
   ATK_CD: 80,        // 공격 최소 간격 ms
+  // 청기백기: 보스 앞으로 뻗은 직사각형 다리 (x: -HW~HW, y: Y0~Y1), 바둑판 2열 x ROWS행
+  F: { HW: 200, Y0: 60, Y1: 860, ROWS: 5, CONV_R: 75, CW: 120, BOSS_Y: -40, GUARD_CD: 800 },
 };
 // 방장이 조절할 수 있는 초수 옵션
 const OPT_SPEC = [
-  { k: 'intro', label: '시작 → 망치 장판', def: 2, min: 0.5, max: 10, step: 0.5 },
-  { k: 'grace', label: '망치 장판 → 구역 판정', def: 4, min: 0.5, max: 10, step: 0.5 },
-  { k: 'enrage', label: '보스 광폭화 (판정 시작 후)', def: 15, min: 5, max: 120, step: 5 },
-  { k: 'convDelay', label: '보스 체력 0 → 변환 장판 (망치 유지)', def: 3, min: 0.5, max: 10, step: 0.5 },
-  { k: 'convDur', label: '변환 장판 유지', def: 5, min: 0.5, max: 10, step: 0.5 },
-  { k: 'boom', label: '변환 장판 소멸 → 전지역 폭발', def: 7, min: 0.5, max: 10, step: 0.5 },
+  { k: 'intro', modes: ['brain'], label: '시작 → 망치 장판', def: 2, min: 0.5, max: 10, step: 0.5 },
+  { k: 'grace', modes: ['brain'], label: '망치 장판 → 구역 판정', def: 4, min: 0.5, max: 10, step: 0.5 },
+  { k: 'enrage', modes: ['brain'], label: '보스 광폭화 (판정 시작 후)', def: 15, min: 5, max: 120, step: 5 },
+  { k: 'convDelay', modes: ['brain'], label: '보스 체력 0 → 변환 장판 (망치 유지)', def: 3, min: 0.5, max: 10, step: 0.5 },
+  { k: 'convDur', modes: ['brain'], label: '변환 장판 유지', def: 5, min: 0.5, max: 10, step: 0.5 },
+  { k: 'boom', modes: ['brain'], label: '변환 장판 소멸 → 전지역 폭발', def: 7, min: 0.5, max: 10, step: 0.5 },
   { k: 'tpCd', label: '순간이동(Space) 쿨타임', def: 5, min: 0, max: 30, step: 1 },
   { k: 'hpPer', label: '보스 체력 (1인당 공격 횟수)', def: 50, min: 5, max: 300, step: 5, unit: '타' },
-  { k: 'forceSteal', label: '변환 대상자 자리 뺏기 강제', def: 0, min: 0, max: 1, step: 1, type: 'bool', hint: '대상자의 자기 자리가 이미 같은 색 → 반전 후 다른 사람 장판으로' },
-  { k: 'randomSeat', label: '자리 랜덤', def: 0, min: 0, max: 1, step: 1, type: 'bool', hint: '매 판 시작 시 방장 배치와 상관없이 8자리 중 무작위 배정' },
-  { k: 'hideEmpty', label: '빈 자리 장판 비활성화', def: 1, min: 0, max: 1, step: 1, type: 'bool', hint: '8명 미만일 때 주인 없는 자리의 반구 장판은 사용 불가' },
+  { k: 'forceSteal', modes: ['brain'], label: '변환 대상자 자리 뺏기 강제', def: 0, min: 0, max: 1, step: 1, type: 'bool', hint: '대상자의 자기 자리가 이미 같은 색 → 반전 후 다른 사람 장판으로' },
+  { k: 'randomSeat', modes: ['brain'], label: '자리 랜덤', def: 0, min: 0, max: 1, step: 1, type: 'bool', hint: '매 판 시작 시 방장 배치와 상관없이 8자리 중 무작위 배정' },
+  { k: 'fIntro', modes: ['flag'], label: '시작 → 첫 빨파 등장', def: 2, min: 0.5, max: 10, step: 0.5 },
+  { k: 'fSlow', modes: ['flag'], label: '느린 빨파 (등장 → 터짐)', def: 2.5, min: 0.5, max: 10, step: 0.5 },
+  { k: 'fHam', modes: ['flag'], label: '좌우 망치 (예고 → 찍기)', def: 3, min: 0.5, max: 10, step: 0.5 },
+  { k: 'fChk', modes: ['flag'], label: '바둑판 (색 표시 → 터짐)', def: 1, min: 0.5, max: 5, step: 0.5 },
+  { k: 'fFast', modes: ['flag'], label: '빠른 빨파 (등장 → 터짐)', def: 1, min: 0.5, max: 5, step: 0.5 },
+  { k: 'fCenter', modes: ['flag'], label: '중앙 큰 망치 (예고 → 찍기)', def: 2.5, min: 0.5, max: 10, step: 0.5 },
+  { k: 'fGuard', modes: ['flag'], label: '저스트가드(G) 허용 오차 ±', def: 0.3, min: 0.1, max: 1, step: 0.1 },
+  { k: 'fConv', modes: ['flag'], label: '변환장판', def: 1, min: 0, max: 1, step: 1, type: 'bool', hint: '랜덤 1명을 따라다니며, 빨파가 터질 때 원 안에 있는 사람 전하를 먼저 반전' },
+  { k: 'fHamHint', modes: ['flag'], label: '망치 찍힐 쪽 바닥에 미리 표시', def: 0, min: 0, max: 1, step: 1, type: 'bool', hint: 'OFF면 보스가 망치를 드는 방향만 보고 판단' },
+  { k: 'fGuardHint', modes: ['flag'], label: '저스트가드 타이밍 링 표시', def: 1, min: 0, max: 1, step: 1, type: 'bool', hint: '터지기 직전 내 캐릭터 주위로 줄어드는 링' },
+  { k: 'hideEmpty', modes: ['brain'], label: '빈 자리 장판 비활성화', def: 1, min: 0, max: 1, step: 1, type: 'bool', hint: '8명 미만일 때 주인 없는 자리의 반구 장판은 사용 불가' },
 ];
 const defaultOpts = () => Object.fromEntries(OPT_SPEC.map(o => [o.k, o.def]));
 function padPos(i) {
@@ -108,7 +120,7 @@ server.on('upgrade', (req, socket) => {
 // ---------- 방 / 게임 ----------
 const rooms = new Map();
 const conns = new Set();
-const GAME_PHASES = ['intro', 'hammer', 'pads', 'conv', 'wait'];
+const GAME_PHASES = ['intro', 'hammer', 'pads', 'conv', 'wait', 'flag'];
 
 function newCode() {
   let c;
@@ -117,9 +129,13 @@ function newCode() {
 }
 function cleanNick(n) { return String(n || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 12); }
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
-function clampPos(x, y) {
+function clampPos(x, y, mode) {
   x = Number(x); y = Number(y);
   if (!isFinite(x) || !isFinite(y)) return null;
+  if (mode === 'flag') {
+    const F = C.F;
+    return { x: Math.max(-F.HW + C.PR, Math.min(F.HW - C.PR, x)), y: Math.max(F.Y0 + C.PR, Math.min(F.Y1 - C.PR, y)) };
+  }
   if (y < C.PR) y = C.PR;
   const d = Math.hypot(x, y), m = C.R - C.PR;
   if (d > m) { x = x / d * m; y = y / d * m; }
@@ -141,7 +157,7 @@ function onConnect(c) {
       if (room) return;
       const nick = cleanNick(m.nick); if (!nick) return err('닉네임을 입력하세요');
       const code = newCode();
-      room = { code, host: id, slots: new Array(8).fill(null), players: new Map(), phase: 'lobby', g: null, order: 0, opts: defaultOpts() };
+      room = { code, host: id, slots: new Array(8).fill(null), players: new Map(), phase: 'lobby', mode: 'brain', g: null, order: 0, opts: defaultOpts() };
       rooms.set(code, room);
       addPlayer(room, c, nick);
     } else if (m.t === 'join') {
@@ -160,7 +176,7 @@ function onConnect(c) {
 function addPlayer(room, c, nick) {
   const slot = room.slots.indexOf(null);
   const inProgress = room.phase !== 'lobby' && room.phase !== 'result';
-  const p = { id: c.id, nick, conn: c, slot, x: 0, y: 200, charge: 1, alive: false, inGame: false, reason: null, lastAtk: 0, lastPing: 0, dmg: 0, joined: room.order++ };
+  const p = { id: c.id, nick, conn: c, slot, x: 0, y: 200, charge: 1, alive: false, inGame: false, reason: null, lastAtk: 0, lastPing: 0, lastGuard: 0, guardAt: 0, dmg: 0, hits: 0, joined: room.order++ };
   room.slots[slot] = c.id;
   room.players.set(c.id, p);
   c.send({ t: 'joined', you: c.id, code: room.code, C, SLOTS, OPT_SPEC, inProgress, version: VERSION });
@@ -183,7 +199,7 @@ function bcast(room, o) { const s = JSON.stringify(o); for (const p of room.play
 function fx(room, o) { o.t = 'fx'; bcast(room, o); }
 function broadcastRoom(room) {
   bcast(room, {
-    t: 'room', code: room.code, host: room.host, phase: room.phase, slots: room.slots, opts: room.opts,
+    t: 'room', code: room.code, host: room.host, phase: room.phase, mode: room.mode, slots: room.slots, opts: room.opts,
     players: [...room.players.values()].map(p => ({ id: p.id, nick: p.nick, slot: p.slot, inGame: p.inGame, alive: p.alive })),
   });
 }
@@ -208,6 +224,17 @@ function handle(room, p, m) {
     }
     case 'start': if (isHost && (room.phase === 'lobby' || room.phase === 'result')) startGame(room); break;
     case 'lobby': if (isHost && room.phase === 'result') { room.phase = 'lobby'; restoreSlots(room); broadcastRoom(room); } break;
+    case 'mode': {
+      if (!isHost || GAME_PHASES.includes(room.phase) || !['brain', 'flag'].includes(m.mode)) return;
+      room.mode = m.mode; broadcastRoom(room); break;
+    }
+    case 'guard': {
+      if (room.mode !== 'flag' || room.phase !== 'flag' || !p.alive || !p.inGame) return;
+      if (now - p.lastGuard < C.F.GUARD_CD) return;
+      p.lastGuard = now; p.guardAt = now;
+      bcast(room, { t: 'gd', id: p.id });
+      break;
+    }
     case 'opts': {
       if (!isHost || GAME_PHASES.includes(room.phase) || !m.opts || typeof m.opts !== 'object') return;
       if (m.opts === 'default' || m.reset) { room.opts = defaultOpts(); broadcastRoom(room); break; }
@@ -221,18 +248,19 @@ function handle(room, p, m) {
     }
     case 'pos': {
       if (!p.alive || !p.inGame || !GAME_PHASES.includes(room.phase)) return;
-      const q = clampPos(m.x, m.y); if (q) { p.x = q.x; p.y = q.y; }
+      const q = clampPos(m.x, m.y, room.mode); if (q) { p.x = q.x; p.y = q.y; }
       break;
     }
     case 'atk': {
       // 망치 장판부터 폭발 직전까지 계속 공격 가능 (보스 체력 0 이후엔 딜 경쟁용)
-      if (!['hammer', 'pads', 'conv', 'wait'].includes(room.phase) || !p.alive || !p.inGame) return;
+      if (!['hammer', 'pads', 'conv', 'wait', 'flag'].includes(room.phase) || !p.alive || !p.inGame) return;
       if (now - p.lastAtk < C.ATK_CD) return;
       p.lastAtk = now; p.hits++;
       const crit = Math.random() < 0.25;
       const val = Math.round((80 + Math.random() * 40) * (crit ? 2 : 1)); // 단위: 억
       p.dmg += val;
       p.conn.send({ t: 'hit', v: val, crit });
+      if (room.phase === 'flag') { g.bossHp = Math.max(0, g.bossHp - 1); break; } // 청기백기: 체력은 연출용
       if (room.phase !== 'hammer') break;
       g.bossHp = Math.max(0, g.bossHp - 1);
       if (g.bossHp <= 0) {
@@ -260,7 +288,7 @@ function handle(room, p, m) {
     case 'ping': {
       if (now - p.lastPing < 250) return;
       const x = Number(m.x), y = Number(m.y);
-      if (!isFinite(x) || !isFinite(y) || Math.abs(x) > 700 || y < -200 || y > 700) return;
+      if (!isFinite(x) || !isFinite(y) || Math.abs(x) > 700 || y < -300 || y > 1100) return;
       p.lastPing = now;
       bcast(room, { t: 'ping', id: p.id, nick: p.nick, x: Math.round(x), y: Math.round(y) });
       break;
@@ -280,13 +308,22 @@ function startGame(room) {
   const ps = shuffle([...room.players.values()]);
   const n = ps.length, k = Math.floor(Math.random() * (n + 1)); // + 전하 인원 (0~n 랜덤)
   ps.forEach((p, i) => {
-    p.charge = i < k ? 1 : -1; p.alive = true; p.inGame = true; p.reason = null; p.dmg = 0; p.hits = 0; p.lastAtk = 0;
-    const a = 0.25 + Math.random() * (Math.PI - 0.5), r = 150 + Math.random() * 160;
-    const q = clampPos(Math.cos(a) * r, Math.sin(a) * r); p.x = q.x; p.y = q.y;
+    p.charge = i < k ? 1 : -1; p.alive = true; p.inGame = true; p.reason = null; p.dmg = 0; p.hits = 0; p.lastAtk = 0; p.guardAt = 0; p.lastGuard = 0;
+    if (room.mode === 'flag') {
+      const q = clampPos(-150 + Math.random() * 300, 480 + Math.random() * 300, 'flag'); p.x = q.x; p.y = q.y;
+    } else {
+      const a = 0.25 + Math.random() * (Math.PI - 0.5), r = 150 + Math.random() * 160;
+      const q = clampPos(Math.cos(a) * r, Math.sin(a) * r); p.x = q.x; p.y = q.y;
+    }
   });
   const now = Date.now();
+  if (room.mode === 'flag') {
+    room.phase = 'flag';
+    room.g = buildFlag(room, now, [k, n - k]);
+  } else {
   room.phase = 'intro';
   room.g = { hammerAt: now + room.opts.intro * 1000, zoneLeft: null, graceEnd: 0, enrageAt: 0, bossMax: 0, bossHp: 0, pads: null, convAt: 0, flipAt: 0, boomAt: 0, convTarget: null, convPos: null, split: [k, n - k] };
+  }
   for (const p of room.players.values()) p.conn.send({ t: 'start', x: p.x, y: p.y, slot: p.slot, rnd: !!room.opts.randomSeat });
   broadcastRoom(room);
 }
@@ -300,7 +337,78 @@ function endGame(room) {
   broadcastRoom(room);
 }
 
+// ---------- 청기백기 ----------
+// 영상 기준 순서(고정): 느린 빨파 → 좌우 망치 → 바둑판 → 좌우 망치 → 빠른 빨파 → 빠른 빨파(좌우 교차) → 중앙 큰 망치
+function buildFlag(room, now, split) {
+  const o = room.opts, rs = () => (Math.random() < 0.5 ? 1 : -1);
+  const slowL = rs(); // 느린 빨파의 왼쪽 색 (1 파랑, -1 빨강)
+  const ev = [];
+  const add = (e, gapSec, teleSec) => { const at = (ev.length ? ev[ev.length - 1].at : now + o.fIntro * 1000) + gapSec * 1000; e.at = at; e.start = at - teleSec * 1000; ev.push(e); };
+  add({ k: 'wave', name: '느린 빨파', L: slowL }, o.fSlow, o.fSlow);
+  add({ k: 'ham', side: rs() }, Math.max(3.5, o.fHam + 0.3), o.fHam);
+  add({ k: 'chk', ph: Math.random() < 0.5 ? 0 : 1, conv: 1 }, Math.max(3.1, o.fChk + 0.8), o.fChk);
+  add({ k: 'ham', side: rs() }, Math.max(3.4, o.fHam + 0.3), o.fHam);
+  add({ k: 'wave', name: '빠른 빨파', L: -slowL, conv: 1 }, Math.max(2.5, o.fFast + 0.3), o.fFast);
+  add({ k: 'wave', name: '빠른 빨파', L: slowL, conv: 1 }, Math.max(2.0, o.fFast + 0.3), o.fFast);
+  add({ k: 'center' }, Math.max(2.5, o.fCenter + 0.3), o.fCenter);
+  const n = Math.max(1, alivePlayers(room).length);
+  return { mode: 'flag', ev, endAt: ev[ev.length - 1].at + 1500, win: o.fGuard * 1000, conv: null, split, bossMax: o.hpPer * n * 3, bossHp: o.hpPer * n * 3 };
+}
+function flagColorAt(e, x, y) {
+  if (e.k === 'wave') return x < 0 ? e.L : -e.L;
+  const F = C.F, col = x < 0 ? 0 : 1;
+  const row = Math.max(0, Math.min(F.ROWS - 1, Math.floor((y - F.Y0) / ((F.Y1 - F.Y0) / F.ROWS))));
+  return (col + row + e.ph) % 2 === 0 ? 1 : -1;
+}
+function flagStep(room, now) {
+  const g = room.g, F = C.F;
+  // 변환장판은 대상자를 따라다님
+  if (g.conv) { const t = room.players.get(g.conv.id); if (t && t.alive) { g.conv.x = t.x; g.conv.y = t.y; } else g.conv = null; }
+  for (const e of g.ev) {
+    if (!e.done && now >= e.at) {
+      e.done = true;
+      if (e.k === 'wave' || e.k === 'chk') {
+        // 변환장판: 터지는 순간 원 안에 있는 사람 전하를 먼저 반전한 뒤 판정
+        if (e.conv && g.conv) {
+          const ids = [];
+          for (const p of alivePlayers(room)) if (Math.hypot(p.x - g.conv.x, p.y - g.conv.y) <= F.CONV_R) { p.charge *= -1; ids.push(p.id); }
+          fx(room, { k: 'flip', ids, x: Math.round(g.conv.x), y: Math.round(g.conv.y) });
+        }
+        e.ok = {};
+        const label = e.k === 'chk' ? '바둑판' : e.name;
+        for (const p of alivePlayers(room)) {
+          if (flagColorAt(e, p.x, p.y) !== p.charge) kill(room, p, label + ' — 다른 색');
+          else e.ok[p.id] = 1;
+        }
+        fx(room, { k: 'det', kind: e.k });
+      } else if (e.k === 'ham') {
+        for (const p of alivePlayers(room)) if (e.side < 0 ? p.x < 0 : p.x > 0) kill(room, p, '좌우 망치 — ' + (e.side < 0 ? '왼쪽' : '오른쪽') + ' 즉사');
+        fx(room, { k: 'slam', side: e.side });
+      } else if (e.k === 'center') {
+        for (const p of alivePlayers(room)) if (Math.abs(p.x) < F.CW) kill(room, p, '중앙 큰 망치 — 낙사');
+        g.conv = null;
+        fx(room, { k: 'slam', side: 0 });
+      }
+    }
+    if ((e.k === 'wave' || e.k === 'chk') && e.done && !e.evald && now >= e.at + g.win) {
+      e.evald = true;
+      for (const p of alivePlayers(room)) {
+        if (!e.ok[p.id]) continue;
+        if (!(p.guardAt && Math.abs(p.guardAt - e.at) <= g.win)) kill(room, p, (e.k === 'chk' ? '바둑판' : e.name) + ' — 저스트가드 실패');
+      }
+      // 첫 빨파가 끝나면 변환장판 생성
+      if (e === g.ev[0] && room.opts.fConv) {
+        const al = alivePlayers(room);
+        if (al.length) { const t = al[Math.floor(Math.random() * al.length)]; g.conv = { id: t.id, x: t.x, y: t.y }; fx(room, { k: 'conv', id: t.id, nick: t.nick }); }
+      }
+      if (e === g.ev[5]) g.conv = null; // 마지막 빨파 이후 변환장판 소멸
+    }
+  }
+  if (now >= g.endAt || alivePlayers(room).length === 0) endGame(room);
+}
+
 function step(room, now) {
+  if (room.mode === 'flag' && room.phase === 'flag') return flagStep(room, now);
   const g = room.g;
   if (room.phase === 'intro' && now >= g.hammerAt) {
     room.phase = 'hammer';
@@ -360,6 +468,14 @@ function step(room, now) {
 
 function sendSnap(room, now) {
   const g = room.g;
+  if (g.mode === 'flag') {
+    return bcast(room, {
+      t: 's', now, ph: room.phase,
+      g: { mode: 'flag', ev: g.ev.map(e => ({ k: e.k, s: e.start, at: e.at, L: e.L, side: e.side, ph: e.ph, conv: e.conv, name: e.name })), win: g.win, end: g.endAt,
+        conv: g.conv && { id: g.conv.id, x: Math.round(g.conv.x), y: Math.round(g.conv.y) }, hp: g.bossHp, hm: g.bossMax, split: g.split },
+      ps: [...room.players.values()].map(p => [p.id, Math.round(p.x), Math.round(p.y), p.charge, p.alive ? 1 : 0, p.inGame ? 1 : 0, p.dmg]),
+    });
+  }
   bcast(room, {
     t: 's', now, ph: room.phase,
     g: { zl: g.zoneLeft, ha: g.hammerAt, ge: g.graceEnd, ea: g.enrageAt, hp: g.bossHp, hm: g.bossMax, pads: g.pads, act: g.act, ca: g.convAt, fa: g.flipAt, ba: g.boomAt, ct: g.convTarget, cp: g.convPos, split: g.split },
@@ -379,7 +495,7 @@ setInterval(() => { for (const c of conns) c.frame(9, Buffer.alloc(0)); }, 20000
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('');
-  console.log('  모르둠 뇌사패턴 미니게임 서버 실행 중 (v' + VERSION + ')');
+  console.log('  모르둠 미니게임 서버 실행 중 (뇌사패턴 · 청기백기, v' + VERSION + ')');
   console.log('  → 이 PC에서:  http://localhost:' + PORT);
   const nets = require('os').networkInterfaces();
   const virt = /vEthernet|VirtualBox|VMware|Hyper-V|WSL|Loopback|Docker|Bluetooth|Tailscale|ZeroTier|Hamachi|TAP|VPN/i;
