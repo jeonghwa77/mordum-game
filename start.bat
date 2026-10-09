@@ -1,0 +1,12 @@
+@echo off
+chcp 65001 > nul
+cd /d "%~dp0"
+where node > nul 2>&1
+if errorlevel 1 (
+  echo Node.js가 설치되어 있지 않아요. https://nodejs.org 에서 LTS 버전을 설치한 뒤 다시 실행하세요.
+  pause
+  exit /b
+)
+start "" http://localhost:3000
+node server.js
+pause

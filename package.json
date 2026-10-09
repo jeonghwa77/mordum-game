@@ -1,0 +1,9 @@
+{
+  "name": "mordum-brainless",
+  "version": "1.0.0",
+  "description": "모르둠 익스트림 뇌사패턴 연습 미니게임 (1~8인 온라인)",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}
