@@ -508,6 +508,16 @@ setInterval(() => {
 }, 50);
 setInterval(() => { for (const c of conns) c.frame(9, Buffer.alloc(0)); }, 20000);
 
+server.on('error', e => {
+  if (e.code === 'EADDRINUSE') {
+    console.log('');
+    console.log('  [오류] ' + PORT + '번 포트를 이미 다른 프로그램이 쓰고 있어요. (아마 예전에 켜 둔 게임 서버)');
+    console.log('  → 열려 있는 서버 창을 모두 닫거나, 이 폴더의 "서버종료.bat" 를 실행한 뒤 start.bat 를 다시 실행하세요.');
+    console.log('');
+    process.exit(1);
+  }
+  throw e;
+});
 server.listen(PORT, '0.0.0.0', () => {
   console.log('');
   console.log('  모르둠 미니게임 서버 실행 중 (뇌사패턴 · 청기백기, v' + VERSION + ')');

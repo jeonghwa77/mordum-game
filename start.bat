@@ -7,6 +7,14 @@ if errorlevel 1 (
   pause
   exit /b
 )
+rem 예전에 켜 둔 게임 서버(node.exe)가 3000번 포트를 쓰고 있으면 끄고 새로 시작
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:":3000 .*LISTENING"') do (
+  tasklist /FI "PID eq %%p" | find /i "node.exe" > nul && (
+    echo 이전에 켜 둔 게임 서버(PID %%p^)를 끄고 새로 시작합니다...
+    taskkill /PID %%p /F > nul
+  )
+)
+timeout /t 1 /nobreak > nul
 start "" http://localhost:3000
 node server.js
 pause
