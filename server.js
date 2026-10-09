@@ -5,7 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
-const VERSION = '2.2';
+const VERSION = '2.3';
 const SLOTS = ['1-1', '1-2', '1-3', '1-4', '2-1', '2-2', '2-3', '2-4'];
 const C = {
   R: 500,            // 반원 맵 반지름
@@ -40,6 +40,7 @@ const OPT_SPEC = [
   { k: 'fCenter', modes: ['flag'], label: '중앙 큰 망치 (예고 → 찍기)', def: 2, min: 0.5, max: 10, step: 0.5 },
   { k: 'fGuard', modes: ['flag'], label: '저스트가드(G) 허용 오차 ±', def: 0.3, min: 0.1, max: 1, step: 0.1 },
   { k: 'fConv', modes: ['flag'], label: '변환장판', def: 1, min: 0, max: 1, step: 1, type: 'bool', hint: '빨파 직후 랜덤 1명에게 생겨 따라다니고, 다음 망치 직후 터지며 원 안 전하 반전 (3회)' },
+  { k: 'fHamEasy', modes: ['flag'], label: '망치 연습용 강조 연출', def: 0, min: 0, max: 1, step: 1, type: 'bool', hint: 'OFF(실전): 어두운 망치가 천천히 들리고, 찍기 직전에만 방향이 드러남 / ON: 붉은 빛·! 표시·그림자' },
   { k: 'fHamHint', modes: ['flag'], label: '망치 찍힐 쪽 바닥에 미리 표시', def: 0, min: 0, max: 1, step: 1, type: 'bool', hint: 'OFF면 보스가 망치를 드는 방향만 보고 판단' },
   { k: 'hideEmpty', modes: ['brain'], label: '빈 자리 장판 비활성화', def: 1, min: 0, max: 1, step: 1, type: 'bool', hint: '8명 미만일 때 주인 없는 자리의 반구 장판은 사용 불가' },
 ];

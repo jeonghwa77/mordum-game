@@ -274,7 +274,7 @@ const store = {
 };
 
 // ---------- 상태 ----------
-const CLIENT_VERSION = '2.2';
+const CLIENT_VERSION = '2.3';
 const OPT_FALLBACK = [
   { k: 'intro', label: '시작 → 망치 장판', def: 2, min: 0.5, max: 10, step: 0.5 },
   { k: 'grace', label: '망치 장판 → 구역 판정', def: 4, min: 0.5, max: 10, step: 0.5 },
@@ -957,6 +957,27 @@ function drawChecker(e, now){
   }
 }
 // 망치: 손잡이 끝(0,0) 기준, 머리는 -len 방향(위)에 있음
+// 실전 연출용 어두운 망치 (보스와 같은 남색 몸체 + 얇은 금색 테두리)
+function darkHammer(x, y, sc, a, tilt, lit){
+  ctx.save(); ctx.translate(x, y); ctx.rotate(tilt); ctx.scale(sc, sc); ctx.globalAlpha = a;
+  ctx.fillStyle = '#141a33'; ctx.strokeStyle = '#000'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.rect(-10, -150, 20, 180); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-95, -235); ctx.lineTo(95, -235); ctx.lineTo(82, -140); ctx.lineTo(-82, -140); ctx.closePath();
+  const g = ctx.createLinearGradient(0, -235, 0, -140); g.addColorStop(0, '#2a3156'); g.addColorStop(1, '#0c1024');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.lineWidth = 3; ctx.strokeStyle = `rgba(201,162,74,${.55 + .45 * lit})`; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-60, -200); ctx.lineTo(60, -200); ctx.moveTo(0, -150); ctx.lineTo(0, 20); ctx.stroke();
+  if (lit > 0) {
+    // 찍기 직전 금색 번개
+    ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = `rgba(255,214,90,${lit})`; ctx.lineWidth = 4; ctx.shadowColor = '#ffd34d'; ctx.shadowBlur = 18;
+    for (let i = 0; i < 5; i++) {
+      ctx.beginPath(); let px = (Math.random() - .5) * 180, py = -240 + Math.random() * 40; ctx.moveTo(px, py);
+      for (let j = 0; j < 5; j++) { px += (Math.random() - .5) * 60; py += 45; ctx.lineTo(px, py); }
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
 function hammerShape(x, y, sc, a, tilt, glow){
   ctx.save(); ctx.translate(x, y); ctx.rotate(tilt); ctx.scale(sc, sc); ctx.globalAlpha = a;
   ctx.shadowColor = glow || '#ffd34d'; ctx.shadowBlur = 30;
@@ -994,12 +1015,14 @@ function drawClashes(t){
       if (st.after < 0) {
         // 휘두르는 중: 머리 위(0°) → 가운데(왼쪽 망치 +90°, 오른쪽 망치 -90°)
         const fade = Math.min(1, st.k * 5);
-        for (let j = 3; j >= 1; j--) { const pp = Math.max(0, st.p - j * .05); if (st.k > .4) hammerShape(sgn * CLASH.px, CLASH.py, CLASH.sc, fade * .14, -sgn * pp * Math.PI / 2, glow); }
-        hammerShape(sgn * CLASH.px, CLASH.py, CLASH.sc, fade, -sgn * st.p * Math.PI / 2, glow);
+        if (easyHam()) {
+          for (let j = 3; j >= 1; j--) { const pp = Math.max(0, st.p - j * .05); if (st.k > .4) hammerShape(sgn * CLASH.px, CLASH.py, CLASH.sc, fade * .14, -sgn * pp * Math.PI / 2, glow); }
+          hammerShape(sgn * CLASH.px, CLASH.py, CLASH.sc, fade, -sgn * st.p * Math.PI / 2, glow);
+        } else darkHammer(sgn * CLASH.px, CLASH.py, CLASH.sc, fade, -sgn * st.p * Math.PI / 2, st.k > .8 ? (st.k - .8) / .2 * .6 : 0);
       } else {
         // 부딪힌 뒤 살짝 튕겨나며 사라짐
         const bounce = Math.sin(Math.min(1, st.after * 2) * Math.PI) * .22;
-        hammerShape(sgn * CLASH.px, CLASH.py, CLASH.sc, 1 - st.after, -sgn * (Math.PI / 2 - bounce), glow);
+        (easyHam() ? hammerShape(sgn * CLASH.px, CLASH.py, CLASH.sc, 1 - st.after, -sgn * (Math.PI / 2 - bounce), glow) : darkHammer(sgn * CLASH.px, CLASH.py, CLASH.sc, 1 - st.after, -sgn * (Math.PI / 2 - bounce), 0));
       }
     }
     if (st.after >= 0) {
@@ -1021,6 +1044,18 @@ function drawHammerEv(e, now, t){
   const x0 = center ? -F.CW : (e.side < 0 ? -F.HW : 0), w = center ? F.CW * 2 : F.HW;
   const hx = center ? 0 : e.side * F.HW * .5, sc = center ? 1.45 : 1.05, baseY = 640;
   const headY = baseY - 188 * sc;
+  if (now < e.at && !easyHam()) {
+    // 실전: 위쪽에서 어둡게 천천히 들리다가, 마지막 0.7초에만 번개를 두르고 찍을 쪽으로 내려옴
+    if (room.opts && room.opts.fHamHint) { ctx.fillStyle = `rgba(255,60,60,${.08 + .3 * k})`; ctx.fillRect(x0, F.Y0, w, F.Y1 - F.Y0); }
+    const swingMs = Math.min(700, (e.at - e.s) * .5), sw = Math.max(0, 1 - (e.at - now) / swingMs);
+    const lift = Math.min(1, k / .6);
+    const topX = center ? 0 : e.side * 25, topY = 210 - 40 * lift;
+    const ease = sw * sw;
+    const bx = topX + (hx - topX) * ease, by = topY + (baseY - topY) * ease;
+    const tilt = center ? 0 : e.side * (.06 * lift) * (1 - ease);
+    darkHammer(bx, by, sc, .9, tilt, sw > 0 ? .4 + .6 * sw : 0);
+    return;
+  }
   if (now < e.at) {
     if (room.opts && room.opts.fHamHint) { ctx.fillStyle = `rgba(255,60,60,${.08 + .3 * k})`; ctx.fillRect(x0, F.Y0, w, F.Y1 - F.Y0); }
     // 바닥 그림자 (점점 진해짐)
@@ -1071,6 +1106,7 @@ function drawFlagConv(t){
   }
   ctx.restore();
 }
+const easyHam = () => !!(room && room.opts && room.opts.fHamEasy);
 function nextColorEv(now){ const g = snap.g; return g.ev && g.ev.find(e => (e.k === 'wave' || e.k === 'chk') && e.at + g.win > now); }
 function drawGuardTexts(t){
   for (let i = gdTexts.length - 1; i >= 0; i--) {
